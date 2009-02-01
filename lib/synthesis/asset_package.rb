@@ -161,8 +161,11 @@ module Synthesis
         # write out to a temp file
         File.open("#{tmp_path}_uncompressed.js", "w") {|f| f.write(source) }
       
-        # compress file with JSMin library
-        `ruby #{jsmin_path}/jsmin.rb <#{tmp_path}_uncompressed.js >#{tmp_path}_compressed.js \n`
+        # try to compress with YUI compressor, if that fails then resort to ruby JSMin
+        unless system("java -jar #{jsmin_path}/yuicompressor-2.4.2.jar --type js <#{tmp_path}_uncompressed.js >#{tmp_path}_compressed.js 2>/dev/null")
+          # compress file with JSMin library
+          `ruby #{jsmin_path}/jsmin.rb <#{tmp_path}_uncompressed.js >#{tmp_path}_compressed.js \n`
+        end
 
         # read it back in and trim it
         result = ""
