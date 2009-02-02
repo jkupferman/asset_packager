@@ -1,3 +1,5 @@
+require 'ruby-debug'
+
 module Synthesis
   class AssetPackage
 
@@ -176,36 +178,55 @@ module Synthesis
 
       def compress_js(source)
         jsmin_path = "#{RAILS_ROOT}/vendor/plugins/asset_packager/lib"
-        tmp_path = "#{RAILS_ROOT}/tmp/#{@target}_packaged"
-      
-        # write out to a temp file
-        File.open("#{tmp_path}_uncompressed.js", "w") {|f| f.write(source) }
-      
-        # try to compress with YUI compressor, if that fails then resort to ruby JSMin
-        unless system("java -jar #{jsmin_path}/yuicompressor-2.4.2.jar --type js <#{tmp_path}_uncompressed.js >#{tmp_path}_compressed.js 2>/dev/null")
-          # compress file with JSMin library
-          `ruby #{jsmin_path}/jsmin.rb <#{tmp_path}_uncompressed.js >#{tmp_path}_compressed.js \n`
-        end
-
-        # read it back in and trim it
         result = ""
-        File.open("#{tmp_path}_compressed.js", "r") { |f| result += f.read.strip }
-  
-        # delete temp files if they exist
-        File.delete("#{tmp_path}_uncompressed.js") if File.exists?("#{tmp_path}_uncompressed.js")
-        File.delete("#{tmp_path}_compressed.js") if File.exists?("#{tmp_path}_compressed.js")
+        begin
+          # attempt to use YUI compressor
+          IO.popen "java -jar #{jsmin_path}/yuicompressor-2.4.2.jar --type js 2>/dev/null", "r+" do |f|
+            f.write source
+            f.close_write
+            result = f.read
+          end
+          return result if $?.success?
+        rescue
+          # fallback to included ruby compressor
+          tmp_path = "#{RAILS_ROOT}/tmp/#{@target}_packaged"
 
-        result
+          # write out to a temp file
+          File.open("#{tmp_path}_uncompressed.js", "w") {|f| f.write(source) }
+          `ruby #{jsmin_path}/jsmin.rb <#{tmp_path}_uncompressed.js >#{tmp_path}_compressed.js \n`
+
+          # read it back in and trim it
+          result = ""
+          File.open("#{tmp_path}_compressed.js", "r") { |f| result += f.read.strip }
+
+          # delete temp files if they exist
+          File.delete("#{tmp_path}_uncompressed.js") if File.exists?("#{tmp_path}_uncompressed.js")
+          File.delete("#{tmp_path}_compressed.js") if File.exists?("#{tmp_path}_compressed.js")
+
+          return result
+        end
       end
   
       def compress_css(source)
-        source.gsub!(/\/\*(.*?)\*\//m, "") # remove comments - caution, might want to remove this if using css hacks
-        source.gsub!(/\s+/, " ")           # collapse space
-        source.gsub!(/\} /, "}\n")         # add line breaks
-        source.gsub!(/\n$/, "")            # remove last break
-        source.gsub!(/ \{ /, " {")         # trim inside brackets
-        source.gsub!(/; \}/, "}")          # trim inside brackets
-        source
+        yui_path = "#{RAILS_ROOT}/vendor/plugins/asset_packager/lib"
+        result = ""
+        begin
+          # attempt to use YUI compressor
+          IO.popen "java -jar #{yui_path}/yuicompressor-2.4.2.jar --type css", "r+" do |f|
+            f.write source
+            f.close_write
+            result = f.read
+          end
+          return result if $?.success?
+        rescue
+          source.gsub!(/\/\*(.*?)\*\//m, "") # remove comments - caution, might want to remove this if using css hacks
+          source.gsub!(/\s+/, " ")           # collapse space
+          source.gsub!(/\} /, "}\n")         # add line breaks
+          source.gsub!(/\n$/, "")            # remove last break
+          source.gsub!(/ \{ /, " {")         # trim inside brackets
+          source.gsub!(/; \}/, "}")          # trim inside brackets
+          source
+        end
       end
 
       def get_extension
