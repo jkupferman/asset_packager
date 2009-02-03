@@ -210,7 +210,7 @@ module Synthesis
         result = ""
         begin
           # attempt to use YUI compressor
-          IO.popen "java -jar #{yui_path}/yuicompressor-2.4.2.jar --type css", "r+" do |f|
+          IO.popen "java -jar #{yui_path}/yuicompressor-2.4.2.jar --type css 2>/dev/null", "r+" do |f|
             f.write source
             f.close_write
             result = f.read
