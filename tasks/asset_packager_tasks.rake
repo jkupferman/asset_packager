@@ -5,7 +5,7 @@ namespace :asset do
   namespace :packager do
 
     desc "Merge and compress assets"
-    task :build_all do
+    task :build_all => :environment do
       Synthesis::AssetPackage.build_all
     end
 

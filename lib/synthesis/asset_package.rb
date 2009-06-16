@@ -65,6 +65,7 @@ module Synthesis
       end
 
       def build_all
+        @@asset_host = Rails.configuration.action_controller.asset_host
         @@asset_packages_yml.keys.each do |asset_type|
           @@asset_packages_yml[asset_type].each { |p| self.new(asset_type, p).build }
         end
@@ -157,11 +158,53 @@ module Synthesis
         "#{@asset_path}/#{source}.#{@extension}"
       end
 
+      def replace_asset_urls(source, data)
+        if @asset_type == "stylesheets"
+          @@css_url_replacements ||= Hash.new
+
+          matches = data.scan(/url\([\s"']*([^\)"'\s]*)[\s"']*\)/m).collect do |match|
+            match.first
+          end
+          
+          # build map of old to new, ensure if 2 files resolve to the same absolute path they get the same asset_host
+          matches.uniq.each do |match|
+            absolute_path = case match
+              when /^(http|https)\:\/\//
+                match
+              when /^\//
+                File.expand_path("#{RAILS_ROOT}/public#{match}")
+              else
+                File.expand_path(File.join(File.dirname(File.expand_path(source)), match))
+              end
+
+              @@css_url_replacements[absolute_path] = case absolute_path
+              when /^(http|https)\:\/\//
+                absolute_path
+              else
+                if @@asset_host.class == String
+                  host = (@@asset_host =~ /%d/) ? @@asset_host % (absolute_path.hash % 4) : @@asset_host
+                  host = host[0..-2] if host =~ /\/$/
+                else
+                  host = ''
+                end
+
+                absolute_path.sub("#{RAILS_ROOT}/public", host) + (File.exist?(absolute_path) ? '?' + File.mtime(absolute_path).to_i.to_s : '')
+              end unless @@css_url_replacements.has_key?(absolute_path)
+
+              unless absolute_path == @@css_url_replacements[absolute_path]
+                data.gsub!(match, @@css_url_replacements[absolute_path])
+              end
+          end
+        end
+
+        return data
+      end
+
       def merged_file
         merged_file = ""
         @sources.each {|s| 
           File.open(full_asset_path(s), "r") { |f| 
-            merged_file += f.read + "\n" 
+            merged_file += replace_asset_urls(full_asset_path(s), f.read) + "\n" 
           }
         }
         merged_file
